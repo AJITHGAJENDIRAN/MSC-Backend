@@ -6,11 +6,12 @@ from sqlalchemy import func, extract
 from datetime import datetime
 from sqlalchemy import distinct
 import mysql.connector
+import logging
 
 app = Flask(__name__)
 
 # Database Configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+mysqlconnector://data:Test1234567890@localhost:3306/data_analysis'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+mysqlconnector://data:Test123!@localhost:3306/data_msc'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = True
 app.config['SECRET_KEY'] = 'your_secret_key'  # Required for session management
@@ -260,6 +261,52 @@ def get_ships():
 #     except Exception as e:
 #         db.session.rollback()
 #         return jsonify({'error': str(e)}), 500
+
+# @app.route('/api/ship-hcu-details')
+# def ship_hcu_details():
+#     try:
+#         # Get query params with validation
+#         ship = request.args.get('ship')
+#         start_year = request.args.get('startYear')
+#         end_year = request.args.get('endYear')
+
+#         # Validate parameters presence
+#         if not ship or not start_year or not end_year:
+#             return jsonify({"error": "Missing required parameters"}), 400
+
+#         # Validate year inputs are integers
+#         try:
+#             start_year = int(start_year)
+#             end_year = int(end_year)
+#         except ValueError:
+#             return jsonify({"error": "startYear and endYear must be integers"}), 400
+
+#         # Validate year range logic
+#         if start_year > end_year:
+#             return jsonify({"error": "startYear cannot be greater than endYear"}), 400
+
+#         # Query your database model - adjust this part based on your models.py
+#         # Example assuming you have ShipHCUDetails model with columns: ship_name, year, and details
+#         results = ShipHCUDetails.query.filter(
+#             ShipHCUDetails.ship_name == ship,
+#             ShipHCUDetails.year >= start_year,
+#             ShipHCUDetails.year <= end_year
+#         ).all()
+
+#         # Handle no results found (404 or empty list)
+#         if not results:
+#             return jsonify({"error": f"No data found for ship {ship} in years {start_year}-{end_year}"}), 404
+
+#         # Format results into a serializable form (dict or list)
+#         data = [r.to_dict() for r in results]  # Implement .to_dict() in your model
+
+#         return jsonify(data), 200
+
+#     except Exception as e:
+#         app.logger.error(f"Error in /api/ship-hcu-details: {str(e)}", exc_info=True)
+#         return jsonify({"error": "Internal server error"}), 500
+
+
 @app.route('/api/ship-hcu-details', methods=['GET'])
 def get_ship_hcu_details():
     try:
@@ -270,14 +317,9 @@ def get_ship_hcu_details():
         if not ship_name or not start_year or not end_year:
             return jsonify({'error': 'Missing required parameters'}), 400
 
-        # Convert years to integers
-        try:
-            start_year = int(start_year)
-            end_year = int(end_year)
-        except ValueError:
-            return jsonify({'error': 'Invalid year format. Use integers for years.'}), 400
+        start_year = int(start_year)
+        end_year = int(end_year)
 
-        # Query using extract to filter by year
         results = db.session.query(
             Data.Ship,
             Data.testdate,
@@ -293,25 +335,79 @@ def get_ship_hcu_details():
         ).order_by(Data.testdate).all()
 
         if not results:
-            return jsonify({'message': 'No data found for the specified ship and year range'}), 404
+            return jsonify({'message': 'No data found'}), 404
 
         data_list = [
             {
-                'Ship': row.Ship,
-                'Sample_Point': row.vlims_lo_samp_point_Desc,
-                'Test_Date': row.testdate.strftime('%Y-%m-%d'),
-                'Particle_Count_4_Micron': row.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE or 0.0,
-                'Particle_Count_6_Micron': row.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE or 0.0,
-                'Particle_Count_14_Micron': row.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE or 0.0
-            }
-            for row in results
+                'Ship': r.Ship,
+                'Sample_Point': r.vlims_lo_samp_point_Desc,
+                'Test_Date': r.testdate.strftime('%Y-%m-%d'),
+                'Particle_Count_4_Micron': r.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE or 0.0,
+                'Particle_Count_6_Micron': r.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE or 0.0,
+                'Particle_Count_14_Micron': r.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE or 0.0,
+            } for r in results
         ]
 
         return jsonify(data_list), 200
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()  # Print full traceback to console
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
+# @app.route('/api/ship-hcu-details', methods=['GET'])
+# def get_ship_hcu_details():
+#     try:
+#         ship_name = request.args.get('ship')
+#         start_year = request.args.get('startYear')
+#         end_year = request.args.get('endYear')
+
+#         if not ship_name or not start_year or not end_year:
+#             return jsonify({'error': 'Missing required parameters'}), 400
+
+#         # Convert years to integers
+#         try:
+#             start_year = int(start_year)
+#             end_year = int(end_year)
+#         except ValueError:
+#             return jsonify({'error': 'Invalid year format. Use integers for years.'}), 400
+
+#         # Query using extract to filter by year
+#         results = db.session.query(
+#             Data.Ship,
+#             Data.testdate,
+#             Data.vlims_lo_samp_point_Desc,
+#             Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE,
+#             Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE,
+#             Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE
+#         ).filter(
+#             Data.Ship == ship_name,
+#             extract('year', Data.testdate) >= start_year,
+#             extract('year', Data.testdate) <= end_year,
+#             Data.vlims_lo_samp_point_Desc.like('HCU%')
+#         ).order_by(Data.testdate).all()
+
+#         if not results:
+#             return jsonify({'message': 'No data found for the specified ship and year range'}), 404
+
+#         data_list = [
+#             {
+#                 'Ship': row.Ship,
+#                 'Sample_Point': row.vlims_lo_samp_point_Desc,
+#                 'Test_Date': row.testdate.strftime('%Y-%m-%d'),
+#                 'Particle_Count_4_Micron': row.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE or 0.0,
+#                 'Particle_Count_6_Micron': row.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE or 0.0,
+#                 'Particle_Count_14_Micron': row.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE or 0.0
+#             }
+#             for row in results
+#         ]
+
+#         return jsonify(data_list), 200
+
+#     except Exception as e:
+#         db.session.rollback()
+#         return jsonify({'error': str(e)}), 500
 
 
 # @app.route('/api/average-particle-count', methods=['GET'])
