@@ -2,34 +2,45 @@ from flask import Flask, request, jsonify, session
 from flask_bcrypt import Bcrypt
 from flask_cors import CORS
 from models import db, User, Data
-from sqlalchemy import func, extract
+from sqlalchemy import func, extract, distinct
 from datetime import datetime
-from sqlalchemy import distinct
-import mysql.connector
-import logging
+import urllib
+from flask import send_from_directory
 
 app = Flask(__name__)
 
-# Database Configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+mysqlconnector://data:Test123!@localhost:3306/data_msc'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_ECHO'] = True
-app.config['SECRET_KEY'] = 'your_secret_key'  # Required for session management
 
-# Initialize Extensions
+# Set secret key for session
+app.config['SECRET_KEY'] = 'your_secret_key_here'  # Change this to a secure random key
+
+params = urllib.parse.quote_plus(
+    "DRIVER={ODBC Driver 17 for SQL Server};"
+    "SERVER=VC-ITL-9068\\PROD01;"
+    "DATABASE=data_msc;"
+    "UID=sa;"
+    "PWD=test@123;"
+)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = f"mssql+pyodbc:///?odbc_connect={params}"
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Initialize extensions
 bcrypt = Bcrypt(app)
 CORS(app, supports_credentials=True)
 db.init_app(app)
 
-# Create DB Tables
+# Create DB tables
 with app.app_context():
     db.create_all()
 
 @app.route("/")
-def hello_world():
-    return "Hello, World!"
+def index():
+    return "API is working"
 
-
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'),
+                               'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 @app.route("/signup", methods=["POST"])
 def signup():
@@ -38,287 +49,104 @@ def signup():
     password = data.get("password")
 
     if not email or not password:
-        return jsonify({"error": "Email and password are required"}), 400  # Bad Request
+        return jsonify({"error": "Email and password are required"}), 400
 
-    user_exists = User.query.filter_by(email=email).first() is not None
-    if user_exists:
-        return jsonify({"error": "Email already exists"}), 409  # Conflict
+    if User.query.filter_by(email=email).first():
+        return jsonify({"error": "Email already exists"}), 409
 
-    hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')  # Ensure it's a string
+    hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
     new_user = User(email=email, password=hashed_password)
     db.session.add(new_user)
     db.session.commit()
 
-    session["user_id"] = new_user.id  # Store user session
+    session["user_id"] = new_user.id
 
-    return jsonify({
-        "id": new_user.id,
-        "email": new_user.email
-    }), 201  # Created
+    return jsonify({"id": new_user.id, "email": new_user.email}), 201
 
 @app.route("/login", methods=["POST"])
-def login_user():
+def login():
     data = request.json
     email = data.get("email")
     password = data.get("password")
 
-    if not email or not password:
-        return jsonify({"error": "Email and password are required"}), 400
-
     user = User.query.filter_by(email=email).first()
     if not user or not bcrypt.check_password_hash(user.password, password):
-        return jsonify({"error": "Invalid credentials"}), 401  # Unauthorized
+        return jsonify({"error": "Invalid credentials"}), 401
 
     session["user_id"] = user.id
-
-    return jsonify({
-        "id": user.id,
-        "email": user.email
-    }), 200  # OK
+    return jsonify({"id": user.id, "email": user.email}), 200
 
 @app.route("/api/sample-type-count", methods=["GET"])
-def get_sample_type_count():
-    """Fetch count of each Samp_Type within a date range."""
+def sample_type_count():
     try:
-        # Get date filters from query parameters
-        start_date = request.args.get("start_date")  # Format: YYYY-MM-DD
-        end_date = request.args.get("end_date")      # Format: YYYY-MM-DD
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
 
-        # Validate and parse dates
         filters = []
         if start_date:
-            try:
-                start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
-                filters.append(Data.testdate >= start_date)
-            except ValueError:
-                return jsonify({"error": "Invalid start_date format. Use YYYY-MM-DD"}), 400
-
+            filters.append(Data.testdate >= datetime.strptime(start_date, "%Y-%m-%d").date())
         if end_date:
-            try:
-                end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
-                filters.append(Data.testdate <= end_date)
-            except ValueError:
-                return jsonify({"error": "Invalid end_date format. Use YYYY-MM-DD"}), 400
+            filters.append(Data.testdate <= datetime.strptime(end_date, "%Y-%m-%d").date())
 
-        # Query the database with optional filters
-        query = db.session.query(
-            Data.Samp_Type, func.count(Data.Samp_Type).label("count_value")
-        ).group_by(Data.Samp_Type)
-
+        query = db.session.query(Data.Samp_Type, func.count(Data.Samp_Type).label("count")).group_by(Data.Samp_Type)
         if filters:
             query = query.filter(*filters)
 
-        results = query.all()
-
-        # Convert results to dictionary format
-        sample_type_counts = {row[0]: row[1] for row in results}
-
-        return jsonify(sample_type_counts), 200  # Return JSON response
-
-    except Exception as e:
-        db.session.rollback()  # Rollback in case of error
-        return jsonify({"error": str(e)}), 500  # Internal Server Error
-
-
-
-@app.route("/api/ship-hcu-count", methods=["GET"])
-def get_ship_hcu_count():
-    """Fetch count of 'HCU' in Samp_Type for each unique ship within a date range."""
-    try:
-        start_date = request.args.get("start_date")  # Format: YYYY-MM-DD
-        end_date = request.args.get("end_date")  # Format: YYYY-MM-DD
-
-        # Validate and parse dates
-        filters = [Data.Samp_Type == "HCU"]
-        if start_date:
-            try:
-                start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
-                filters.append(Data.testdate >= start_date)
-            except ValueError:
-                return jsonify({"error": "Invalid start_date format. Use YYYY-MM-DD"}), 400
-
-        if end_date:
-            try:
-                end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
-                filters.append(Data.testdate <= end_date)
-            except ValueError:
-                return jsonify({"error": "Invalid end_date format. Use YYYY-MM-DD"}), 400
-
-        # Query with filters
-        results = db.session.query(
-            Data.Ship, func.count(Data.Samp_Type).label("hcu_count")
-        ).filter(*filters).group_by(Data.Ship).all()
-
-        ship_hcu_counts = {row[0]: row[1] for row in results}
-
-        return jsonify(ship_hcu_counts), 200
-
+        return jsonify({row[0]: row[1] for row in query.all()}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/ship-hcu-count", methods=["GET"])
+def ship_hcu_count():
+    try:
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+
+        filters = [Data.Samp_Type == "HCU"]
+        if start_date:
+            filters.append(Data.testdate >= datetime.strptime(start_date, "%Y-%m-%d").date())
+        if end_date:
+            filters.append(Data.testdate <= datetime.strptime(end_date, "%Y-%m-%d").date())
+
+        query = db.session.query(Data.Ship, func.count(Data.Samp_Type)).filter(*filters).group_by(Data.Ship)
+        return jsonify({row[0]: row[1] for row in query.all()}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/purifier-count", methods=["GET"])
-def get_purifier_count():
-    """Fetch count of 'Purifier' in Samp_Type for each unique ship within a date range."""
+def purifier_count():
     try:
-        # Get date filters from query parameters
-        start_date = request.args.get("start_date")  # Format: YYYY-MM-DD
-        end_date = request.args.get("end_date")      # Format: YYYY-MM-DD
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
 
-        # Validate and parse dates
         filters = [Data.Samp_Type == "Purifier"]
         if start_date:
-            try:
-                start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
-                filters.append(Data.testdate >= start_date)
-            except ValueError:
-                return jsonify({"error": "Invalid start_date format. Use YYYY-MM-DD"}), 400
-
+            filters.append(Data.testdate >= datetime.strptime(start_date, "%Y-%m-%d").date())
         if end_date:
-            try:
-                end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
-                filters.append(Data.testdate <= end_date)
-            except ValueError:
-                return jsonify({"error": "Invalid end_date format. Use YYYY-MM-DD"}), 400
+            filters.append(Data.testdate <= datetime.strptime(end_date, "%Y-%m-%d").date())
 
-        # Query the database with optional filters
-        query = db.session.query(
-            Data.Ship, func.count(Data.Samp_Type).label("purifier_count")
-        ).filter(*filters).group_by(Data.Ship)
-
-        results = query.all()
-
-        # Convert results to dictionary format
-        purifier_counts = {row[0]: row[1] for row in results}
-
-        return jsonify(purifier_counts), 200  # Return JSON response
-
+        query = db.session.query(Data.Ship, func.count(Data.Samp_Type)).filter(*filters).group_by(Data.Ship)
+        return jsonify({row[0]: row[1] for row in query.all()}), 200
     except Exception as e:
-        db.session.rollback()  # Rollback in case of error
-        return jsonify({"error": str(e)}), 500  # Internal Server Error
-
-
-
-
-
-
-
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/ships', methods=['GET'])
-def get_ships():
+def ship_list():
     try:
         ships = db.session.query(distinct(Data.Ship)).all()
-        ship_names = [ship[0] for ship in ships if ship[0]]
-        return jsonify(ship_names), 200
+        return jsonify([s[0] for s in ships if s[0]]), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# @app.route('/api/ship-hcu-details', methods=['GET'])
-# def get_ship_hcu_details():
-#     try:
-#         ship_name = request.args.get('ship')
-#         start_year = request.args.get('startYear')
-#         end_year = request.args.get('endYear')
-
-#         if not ship_name or not start_year or not end_year:
-#             return jsonify({'error': 'Missing required parameters'}), 400
-
-#         start_date = datetime(int(start_year), 1, 1)
-#         end_date = datetime(int(end_year), 12, 31)
-
-#         results = db.session.query(
-#             Data.Ship,
-#             Data.testdate,
-#             Data.vlims_lo_samp_point_Desc,
-#             Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE,
-#             Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE,
-#             Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE
-#         ).filter(
-#             Data.Ship == ship_name,
-#             Data.testdate >= start_date,
-#             Data.testdate <= end_date,
-#             Data.vlims_lo_samp_point_Desc.like('HCU%')
-#         ).order_by(Data.testdate).all()
-
-#         if not results:
-#             return jsonify({'message': 'No data found for the specified ship and year range'}), 404
-
-#         data_list = [
-#             {
-#                 'Ship': row.Ship,
-#                 'Sample_Point': row.vlims_lo_samp_point_Desc,
-#                 'Test_Date': row.testdate.strftime('%Y-%m-%d'),
-#                 'Particle_Count_4_Micron': row.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE or 0.0,
-#                 'Particle_Count_6_Micron': row.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE or 0.0,
-#                 'Particle_Count_14_Micron': row.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE or 0.0
-#             }
-#             for row in results
-#         ]
-
-#         return jsonify(data_list), 200
-
-#     except Exception as e:
-#         db.session.rollback()
-#         return jsonify({'error': str(e)}), 500
-
-# @app.route('/api/ship-hcu-details')
-# def ship_hcu_details():
-#     try:
-#         # Get query params with validation
-#         ship = request.args.get('ship')
-#         start_year = request.args.get('startYear')
-#         end_year = request.args.get('endYear')
-
-#         # Validate parameters presence
-#         if not ship or not start_year or not end_year:
-#             return jsonify({"error": "Missing required parameters"}), 400
-
-#         # Validate year inputs are integers
-#         try:
-#             start_year = int(start_year)
-#             end_year = int(end_year)
-#         except ValueError:
-#             return jsonify({"error": "startYear and endYear must be integers"}), 400
-
-#         # Validate year range logic
-#         if start_year > end_year:
-#             return jsonify({"error": "startYear cannot be greater than endYear"}), 400
-
-#         # Query your database model - adjust this part based on your models.py
-#         # Example assuming you have ShipHCUDetails model with columns: ship_name, year, and details
-#         results = ShipHCUDetails.query.filter(
-#             ShipHCUDetails.ship_name == ship,
-#             ShipHCUDetails.year >= start_year,
-#             ShipHCUDetails.year <= end_year
-#         ).all()
-
-#         # Handle no results found (404 or empty list)
-#         if not results:
-#             return jsonify({"error": f"No data found for ship {ship} in years {start_year}-{end_year}"}), 404
-
-#         # Format results into a serializable form (dict or list)
-#         data = [r.to_dict() for r in results]  # Implement .to_dict() in your model
-
-#         return jsonify(data), 200
-
-#     except Exception as e:
-#         app.logger.error(f"Error in /api/ship-hcu-details: {str(e)}", exc_info=True)
-#         return jsonify({"error": "Internal server error"}), 500
-
-
 @app.route('/api/ship-hcu-details', methods=['GET'])
-def get_ship_hcu_details():
+def ship_hcu_details():
     try:
-        ship_name = request.args.get('ship')
-        start_year = request.args.get('startYear')
-        end_year = request.args.get('endYear')
-
-        if not ship_name or not start_year or not end_year:
-            return jsonify({'error': 'Missing required parameters'}), 400
-
-        start_year = int(start_year)
-        end_year = int(end_year)
+        ship = request.args.get('ship')
+        start_year = int(request.args.get('startYear'))
+        end_year = int(request.args.get('endYear'))
 
         results = db.session.query(
             Data.Ship,
@@ -328,96 +156,33 @@ def get_ship_hcu_details():
             Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE,
             Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE
         ).filter(
-            Data.Ship == ship_name,
+            Data.Ship == ship,
             extract('year', Data.testdate) >= start_year,
             extract('year', Data.testdate) <= end_year,
             Data.vlims_lo_samp_point_Desc.like('HCU%')
         ).order_by(Data.testdate).all()
 
-        if not results:
-            return jsonify({'message': 'No data found'}), 404
-
-        data_list = [
-            {
-                'Ship': r.Ship,
-                'Sample_Point': r.vlims_lo_samp_point_Desc,
-                'Test_Date': r.testdate.strftime('%Y-%m-%d'),
-                'Particle_Count_4_Micron': r.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE or 0.0,
-                'Particle_Count_6_Micron': r.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE or 0.0,
-                'Particle_Count_14_Micron': r.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE or 0.0,
-            } for r in results
-        ]
-
-        return jsonify(data_list), 200
+        return jsonify([{
+            'Ship': r.Ship,
+            'Sample_Point': r.vlims_lo_samp_point_Desc,
+            'Test_Date': r.testdate.strftime('%Y-%m-%d'),
+            'Particle_Count_4_Micron': r.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE or 0.0,
+            'Particle_Count_6_Micron': r.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE or 0.0,
+            'Particle_Count_14_Micron': r.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE or 0.0
+        } for r in results]), 200
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()  # Print full traceback to console
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
-
-# @app.route('/api/ship-hcu-details', methods=['GET'])
-# def get_ship_hcu_details():
-#     try:
-#         ship_name = request.args.get('ship')
-#         start_year = request.args.get('startYear')
-#         end_year = request.args.get('endYear')
-
-#         if not ship_name or not start_year or not end_year:
-#             return jsonify({'error': 'Missing required parameters'}), 400
-
-#         # Convert years to integers
-#         try:
-#             start_year = int(start_year)
-#             end_year = int(end_year)
-#         except ValueError:
-#             return jsonify({'error': 'Invalid year format. Use integers for years.'}), 400
-
-#         # Query using extract to filter by year
-#         results = db.session.query(
-#             Data.Ship,
-#             Data.testdate,
-#             Data.vlims_lo_samp_point_Desc,
-#             Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE,
-#             Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE,
-#             Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE
-#         ).filter(
-#             Data.Ship == ship_name,
-#             extract('year', Data.testdate) >= start_year,
-#             extract('year', Data.testdate) <= end_year,
-#             Data.vlims_lo_samp_point_Desc.like('HCU%')
-#         ).order_by(Data.testdate).all()
-
-#         if not results:
-#             return jsonify({'message': 'No data found for the specified ship and year range'}), 404
-
-#         data_list = [
-#             {
-#                 'Ship': row.Ship,
-#                 'Sample_Point': row.vlims_lo_samp_point_Desc,
-#                 'Test_Date': row.testdate.strftime('%Y-%m-%d'),
-#                 'Particle_Count_4_Micron': row.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE or 0.0,
-#                 'Particle_Count_6_Micron': row.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE or 0.0,
-#                 'Particle_Count_14_Micron': row.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE or 0.0
-#             }
-#             for row in results
-#         ]
-
-#         return jsonify(data_list), 200
-
-#     except Exception as e:
-#         db.session.rollback()
-#         return jsonify({'error': str(e)}), 500
-
 
 # @app.route('/api/average-particle-count', methods=['GET'])
 # def get_average_particle_count():
 #     try:
-#         ship_name = request.args.get('ship')
 #         start_date = request.args.get('start_date')
 #         end_date = request.args.get('end_date')
+#         ship_name = request.args.get('ship_name', None)
 
-#         if not ship_name or not start_date or not end_date:
+#         if not start_date or not end_date:
 #             return jsonify({'error': 'Missing required parameters'}), 400
 
 #         # Convert dates
@@ -427,26 +192,31 @@ def get_ship_hcu_details():
 #         except ValueError:
 #             return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
 
-#         # Query the database for the averages
-#         results = db.session.query(
+#         # Base query
+#         query = db.session.query(
 #             Data.vlims_lo_samp_point_Desc,
 #             func.avg(Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE).label('avg_4_micron'),
 #             func.avg(Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE).label('avg_6_micron'),
 #             func.avg(Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE).label('avg_14_micron')
 #         ).filter(
-#             Data.Ship == ship_name,
 #             Data.testdate >= start_date,
 #             Data.testdate <= end_date,
 #             Data.vlims_lo_samp_point_Desc.in_([f'HCU#{i}' for i in range(1, 10)])
-#         ).group_by(Data.vlims_lo_samp_point_Desc).all()
+#         )
+
+#         # Apply ship filter if ship_name is provided
+#         if ship_name and ship_name.lower() != 'all':
+#             query = query.filter(Data.Ship == ship_name)
+        
+#         query = query.group_by(Data.vlims_lo_samp_point_Desc)
+#         results = query.all()
 
 #         if not results:
-#             return jsonify({'message': 'No data found for the specified ship and date range'}), 404
+#             return jsonify({'message': 'No data found for the specified date range'}), 404
 
 #         # Format data
 #         data_list = [
 #             {
-#                 'Ship': ship_name,
 #                 'Sample_Point': row.vlims_lo_samp_point_Desc,
 #                 'Average_Particle_Count_4_Micron': round(row.avg_4_micron, 2) if row.avg_4_micron else 0.0,
 #                 'Average_Particle_Count_6_Micron': round(row.avg_6_micron, 2) if row.avg_6_micron else 0.0,
@@ -460,24 +230,20 @@ def get_ship_hcu_details():
 #     except Exception as e:
 #         db.session.rollback()
 #         return jsonify({'error': str(e)}), 500
+
 @app.route('/api/average-particle-count', methods=['GET'])
 def get_average_particle_count():
     try:
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
-        ship_name = request.args.get('ship_name', None)
+        ship = request.args.get('ship_name', None)
 
         if not start_date or not end_date:
-            return jsonify({'error': 'Missing required parameters'}), 400
+            return jsonify({'error': 'Missing date parameters'}), 400
 
-        # Convert dates
-        try:
-            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-        except ValueError:
-            return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
 
-        # Base query
         query = db.session.query(
             Data.vlims_lo_samp_point_Desc,
             func.avg(Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE).label('avg_4_micron'),
@@ -489,28 +255,22 @@ def get_average_particle_count():
             Data.vlims_lo_samp_point_Desc.in_([f'HCU#{i}' for i in range(1, 10)])
         )
 
-        # Apply ship filter if ship_name is provided
-        if ship_name and ship_name.lower() != 'all':
-            query = query.filter(Data.Ship == ship_name)
-        
-        query = query.group_by(Data.vlims_lo_samp_point_Desc)
-        results = query.all()
+        if ship and ship.lower() != 'all':
+            query = query.filter(Data.Ship == ship)
+
+        results = query.group_by(Data.vlims_lo_samp_point_Desc).all()
 
         if not results:
-            return jsonify({'message': 'No data found for the specified date range'}), 404
+            return jsonify({'message': 'No data found'}), 404
 
-        # Format data
-        data_list = [
+        return jsonify([
             {
                 'Sample_Point': row.vlims_lo_samp_point_Desc,
-                'Average_Particle_Count_4_Micron': round(row.avg_4_micron, 2) if row.avg_4_micron else 0.0,
-                'Average_Particle_Count_6_Micron': round(row.avg_6_micron, 2) if row.avg_6_micron else 0.0,
-                'Average_Particle_Count_14_Micron': round(row.avg_14_micron, 2) if row.avg_14_micron else 0.0
-            }
-            for row in results
-        ]
-
-        return jsonify(data_list), 200
+                'Average_Particle_Count_4_Micron': round(row.avg_4_micron or 0.0, 2),
+                'Average_Particle_Count_6_Micron': round(row.avg_6_micron or 0.0, 2),
+                'Average_Particle_Count_14_Micron': round(row.avg_14_micron or 0.0, 2)
+            } for row in results
+        ]), 200
 
     except Exception as e:
         db.session.rollback()
@@ -568,8 +328,6 @@ def get_average_particle_count():
 #     except Exception as e:
 #         db.session.rollback()
 #         return jsonify({'error': str(e)}), 500
-
-
 
 @app.route('/api/filtered-average-particle-count', methods=['GET'])
 def filtered_average_particle_count():
@@ -639,8 +397,106 @@ def filtered_average_particle_count():
         return jsonify({'error': str(e)}), 500
 
 
+# @app.route('/api/filtered-average-particle-count', methods=['GET'])
+# def filtered_average_particle_count():
+#     # Your logic here
+#     try:
+#         start_date = request.args.get('start_date')
+#         end_date = request.args.get('end_date')
+
+#         if not start_date or not end_date:
+#             return jsonify({'error': 'Missing required parameters'}), 400
+
+#         # Convert dates
+#         try:
+#             start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+#             end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+#         except ValueError:
+#             return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+
+#         # Query for BEFORE FILTER data
+#         before_filter_results = db.session.query(
+#             Data.Ship,
+#             func.avg(Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE).label('avg_4_micron'),
+#             func.avg(Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE).label('avg_6_micron'),
+#             func.avg(Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE).label('avg_14_micron')
+#         ).filter(
+#             Data.testdate >= start_date,
+#             Data.testdate <= end_date,
+#             Data.vlims_lo_samp_point_Desc == 'BEFORE FILTER'
+#         ).group_by(Data.Ship).all()
+
+#         # Query for AFTER FILTER data
+#         after_filter_results = db.session.query(
+#             Data.Ship,
+#             func.avg(Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE).label('avg_4_micron'),
+#             func.avg(Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE).label('avg_6_micron'),
+#             func.avg(Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE).label('avg_14_micron')
+#         ).filter(
+#             Data.testdate >= start_date,
+#             Data.testdate <= end_date,
+#             Data.vlims_lo_samp_point_Desc == 'AFTER FILTER'
+#         ).group_by(Data.Ship).all()
+
+#         # Format the results
+#         data_list = []
+#         for row in before_filter_results:
+#             data_list.append({
+#                 'Ship': row.Ship,
+#                 'vlims_lo_samp_point_Desc': 'BEFORE FILTER',
+#                 'Average_Particle_Count_4_Micron': round(row.avg_4_micron, 2) if row.avg_4_micron else 0.0,
+#                 'Average_Particle_Count_6_Micron': round(row.avg_6_micron, 2) if row.avg_6_micron else 0.0,
+#                 'Average_Particle_Count_14_Micron': round(row.avg_14_micron, 2) if row.avg_14_micron else 0.0
+#             })
+
+#         for row in after_filter_results:
+#             data_list.append({
+#                 'Ship': row.Ship,
+#                 'vlims_lo_samp_point_Desc': 'AFTER FILTER',
+#                 'Average_Particle_Count_4_Micron': round(row.avg_4_micron, 2) if row.avg_4_micron else 0.0,
+#                 'Average_Particle_Count_6_Micron': round(row.avg_6_micron, 2) if row.avg_6_micron else 0.0,
+#                 'Average_Particle_Count_14_Micron': round(row.avg_14_micron, 2) if row.avg_14_micron else 0.0
+#             })
+
+#         return jsonify(data_list), 200
+
+#     except Exception as e:
+#         db.session.rollback()
+#         return jsonify({'error': str(e)}), 500
+
+# @app.route('/api/filtered-average-particle-count', methods=['GET'])
+# def avg_particle_count():
+#     try:
+#         start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d').date()
+#         end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d').date()
+
+#         data_list = []
+#         for label in ['BEFORE FILTER', 'AFTER FILTER']:
+#             results = db.session.query(
+#                 Data.Ship,
+#                 func.avg(Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE).label('avg_4'),
+#                 func.avg(Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE).label('avg_6'),
+#                 func.avg(Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE).label('avg_14')
+#             ).filter(
+#                 Data.testdate >= start_date,
+#                 Data.testdate <= end_date,
+#                 Data.vlims_lo_samp_point_Desc == label
+#             ).group_by(Data.Ship).all()
+
+#             for row in results:
+#                 data_list.append({
+#                     'Ship': row.Ship,
+#                     'vlims_lo_samp_point_Desc': label,
+#                     'Average_Particle_Count_4_Micron': round(row.avg_4, 2) if row.avg_4 else 0.0,
+#                     'Average_Particle_Count_6_Micron': round(row.avg_6, 2) if row.avg_6 else 0.0,
+#                     'Average_Particle_Count_14_Micron': round(row.avg_14, 2) if row.avg_14 else 0.0
+#                 })
+
+#         return jsonify(data_list), 200
+
+#     except Exception as e:
+#         db.session.rollback()
+#         return jsonify({'error': str(e)}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
-
-
