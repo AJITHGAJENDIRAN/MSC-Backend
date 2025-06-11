@@ -22,7 +22,8 @@ class Data(db.Model):
     """
     Data model for ship particle count records.
     """
-    __tablename__ = 'ship_data'
+    # __tablename__ = 'ship_data'
+    __tablename__ = 'data'
 
     id = db.Column(db.Integer, primary_key=True)
     Ship = db.Column(db.String(255), nullable=False)
