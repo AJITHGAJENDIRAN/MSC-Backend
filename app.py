@@ -6,9 +6,12 @@ from sqlalchemy import func, extract, distinct
 from datetime import datetime
 import urllib
 from flask import send_from_directory
+from flask_cors import CORS
+
+
 
 app = Flask(__name__)
-
+CORS(app)
 
 # Set secret key for session
 app.config['SECRET_KEY'] = 'your_secret_key_here'  # Change this to a secure random key
