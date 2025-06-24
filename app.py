@@ -18,7 +18,7 @@ app.config['SECRET_KEY'] = 'your_secret_key_here'  # Change this to a secure ran
 
 params = urllib.parse.quote_plus(
     "DRIVER={ODBC Driver 17 for SQL Server};"
-    "SERVER=14.97.168.235;"
+    "SERVER=14.97.168.235,1433;"
     "DATABASE=data_msc;"
     "UID=sa;"
     "PWD=Viswa.AJ@2025;"
