@@ -20,10 +20,10 @@ app.config['SECRET_KEY'] = 'your_secret_key_here'  # Change this to a secure ran
 
 params = urllib.parse.quote_plus(
     "DRIVER={ODBC Driver 17 for SQL Server};"
-    "SERVER=14.97.168.235;"
+    "SERVER=52.140.61.220;"
     "DATABASE=data_msc;"
     "UID=sa;"
-    "PWD=Viswa.AJ@2025;"
+    "PWD=Viswa.AJ#2025;"
 )
 
 app.config['SQLALCHEMY_DATABASE_URI'] = f"mssql+pyodbc:///?odbc_connect={params}"
