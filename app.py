@@ -20,8 +20,8 @@ params = urllib.parse.quote_plus(
     "DRIVER={ODBC Driver 17 for SQL Server};"
     "SERVER=14.97.168.235,1433;"
     "DATABASE=data_msc;"
-    "UID=sa;"
-    "PWD=Viswa.AJ@2025;"
+    "UID=DevUser;"
+    "PWD=Viswa.AJ#2025;"
 )
 
 app.config['SQLALCHEMY_DATABASE_URI'] = f"mssql+pyodbc:///?odbc_connect={params}"
