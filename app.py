@@ -180,61 +180,6 @@ def ship_hcu_details():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-# @app.route('/api/average-particle-count', methods=['GET'])
-# def get_average_particle_count():
-#     try:
-#         start_date = request.args.get('start_date')
-#         end_date = request.args.get('end_date')
-#         ship_name = request.args.get('ship_name', None)
-
-#         if not start_date or not end_date:
-#             return jsonify({'error': 'Missing required parameters'}), 400
-
-#         # Convert dates
-#         try:
-#             start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-#             end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-#         except ValueError:
-#             return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
-
-#         # Base query
-#         query = db.session.query(
-#             Data.vlims_lo_samp_point_Desc,
-#             func.avg(Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE).label('avg_4_micron'),
-#             func.avg(Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE).label('avg_6_micron'),
-#             func.avg(Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE).label('avg_14_micron')
-#         ).filter(
-#             Data.testdate >= start_date,
-#             Data.testdate <= end_date,
-#             Data.vlims_lo_samp_point_Desc.in_([f'HCU#{i}' for i in range(1, 10)])
-#         )
-
-#         # Apply ship filter if ship_name is provided
-#         if ship_name and ship_name.lower() != 'all':
-#             query = query.filter(Data.Ship == ship_name)
-        
-#         query = query.group_by(Data.vlims_lo_samp_point_Desc)
-#         results = query.all()
-
-#         if not results:
-#             return jsonify({'message': 'No data found for the specified date range'}), 404
-
-#         # Format data
-#         data_list = [
-#             {
-#                 'Sample_Point': row.vlims_lo_samp_point_Desc,
-#                 'Average_Particle_Count_4_Micron': round(row.avg_4_micron, 2) if row.avg_4_micron else 0.0,
-#                 'Average_Particle_Count_6_Micron': round(row.avg_6_micron, 2) if row.avg_6_micron else 0.0,
-#                 'Average_Particle_Count_14_Micron': round(row.avg_14_micron, 2) if row.avg_14_micron else 0.0
-#             }
-#             for row in results
-#         ]
-
-#         return jsonify(data_list), 200
-
-#     except Exception as e:
-#         db.session.rollback()
-#         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/average-particle-count', methods=['GET'])
 def get_average_particle_count():
@@ -281,58 +226,7 @@ def get_average_particle_count():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-# @app.route('/api/average-particle-count', methods=['GET'])
-# def get_average_particle_count():
-#     try:
-#         start_date = request.args.get('start_date')
-#         end_date = request.args.get('end_date')
 
-#         if not start_date or not end_date:
-#             return jsonify({'error': 'Missing required parameters'}), 400
-
-#         # Convert dates
-#         try:
-#             start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-#             end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-#         except ValueError:
-
-
-
-#             return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
-
-#         # Query the database for the averages without filtering by ship name
-#         results = db.session.query(
-#             Data.Ship,
-#             Data.vlims_lo_samp_point_Desc,
-#             func.avg(Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE).label('avg_4_micron'),
-#             func.avg(Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE).label('avg_6_micron'),
-#             func.avg(Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE).label('avg_14_micron')
-#         ).filter(
-#             Data.testdate >= start_date,
-#             Data.testdate <= end_date,
-#             Data.vlims_lo_samp_point_Desc.in_([f'HCU#{i}' for i in range(1, 10)])
-#         ).group_by(Data.Ship, Data.vlims_lo_samp_point_Desc).all()
-
-#         if not results:
-#             return jsonify({'message': 'No data found for the specified date range'}), 404
-
-#         # Format data
-#         data_list = [
-#             {
-#                 'Ship': row.Ship,
-#                 'Sample_Point': row.vlims_lo_samp_point_Desc,
-#                 'Average_Particle_Count_4_Micron': round(row.avg_4_micron, 2) if row.avg_4_micron else 0.0,
-#                 'Average_Particle_Count_6_Micron': round(row.avg_6_micron, 2) if row.avg_6_micron else 0.0,
-#                 'Average_Particle_Count_14_Micron': round(row.avg_14_micron, 2) if row.avg_14_micron else 0.0
-#             }
-#             for row in results
-#         ]
-
-#         return jsonify(data_list), 200
-
-#     except Exception as e:
-#         db.session.rollback()
-#         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/filtered-average-particle-count', methods=['GET'])
 def filtered_average_particle_count():
@@ -402,106 +296,261 @@ def filtered_average_particle_count():
         return jsonify({'error': str(e)}), 500
 
 
-# @app.route('/api/filtered-average-particle-count', methods=['GET'])
-# def filtered_average_particle_count():
-#     # Your logic here
+# @app.route("/api/ship-summary", methods=["GET"])
+# def ship_summary():
 #     try:
-#         start_date = request.args.get('start_date')
-#         end_date = request.args.get('end_date')
+#         # Get parameters
+#         ship = request.args.get("ship")
+#         start_date_str = request.args.get("start_date")
+#         end_date_str = request.args.get("end_date")
 
-#         if not start_date or not end_date:
-#             return jsonify({'error': 'Missing required parameters'}), 400
+#         if not ship or not start_date_str or not end_date_str:
+#             return jsonify({"error": "Missing required parameters"}), 400
 
-#         # Convert dates
+#         # Parse dates
 #         try:
-#             start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
-#             end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+#             start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+#             end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
 #         except ValueError:
-#             return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+#             return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
 
-#         # Query for BEFORE FILTER data
-#         before_filter_results = db.session.query(
-#             Data.Ship,
-#             func.avg(Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE).label('avg_4_micron'),
-#             func.avg(Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE).label('avg_6_micron'),
-#             func.avg(Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE).label('avg_14_micron')
-#         ).filter(
+#         # Common filter
+#         base_filters = [
+#             Data.Ship == ship,
 #             Data.testdate >= start_date,
-#             Data.testdate <= end_date,
-#             Data.vlims_lo_samp_point_Desc == 'BEFORE FILTER'
-#         ).group_by(Data.Ship).all()
+#             Data.testdate <= end_date
+#         ]
 
-#         # Query for AFTER FILTER data
-#         after_filter_results = db.session.query(
-#             Data.Ship,
-#             func.avg(Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE).label('avg_4_micron'),
-#             func.avg(Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE).label('avg_6_micron'),
-#             func.avg(Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE).label('avg_14_micron')
+#         # Sample type count
+#         sample_type_query = db.session.query(
+#             Data.Samp_Type,
+#             func.count().label("count")
+#         ).filter(*base_filters).group_by(Data.Samp_Type).all()
+#         sample_type_count = {row[0]: row[1] for row in sample_type_query}
+
+#         # HCU count
+#         hcu_count = db.session.query(func.count()).filter(*base_filters, Data.Samp_Type == "HCU").scalar()
+
+#         # Purifier count
+#         purifier_count = db.session.query(func.count()).filter(*base_filters, Data.Samp_Type == "Purifier").scalar()
+
+#         # HCU details
+#         hcu_details = db.session.query(
+#             Data.testdate,
+#             Data.vlims_lo_samp_point_Desc,
+#             Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE,
+#             Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE,
+#             Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE
 #         ).filter(
-#             Data.testdate >= start_date,
-#             Data.testdate <= end_date,
-#             Data.vlims_lo_samp_point_Desc == 'AFTER FILTER'
-#         ).group_by(Data.Ship).all()
+#             *base_filters,
+#             Data.vlims_lo_samp_point_Desc.like("HCU%")
+#         ).order_by(Data.testdate).all()
 
-#         # Format the results
-#         data_list = []
-#         for row in before_filter_results:
-#             data_list.append({
-#                 'Ship': row.Ship,
-#                 'vlims_lo_samp_point_Desc': 'BEFORE FILTER',
-#                 'Average_Particle_Count_4_Micron': round(row.avg_4_micron, 2) if row.avg_4_micron else 0.0,
-#                 'Average_Particle_Count_6_Micron': round(row.avg_6_micron, 2) if row.avg_6_micron else 0.0,
-#                 'Average_Particle_Count_14_Micron': round(row.avg_14_micron, 2) if row.avg_14_micron else 0.0
-#             })
+#         hcu_detail_list = [
+#             {
+#                 "Test_Date": row.testdate.strftime("%Y-%m-%d"),
+#                 "Sample_Point": row.vlims_lo_samp_point_Desc,
+#                 "Particle_Count_4_Micron": row.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE or 0.0,
+#                 "Particle_Count_6_Micron": row.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE or 0.0,
+#                 "Particle_Count_14_Micron": row.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE or 0.0,
+#             } for row in hcu_details
+#         ]
 
-#         for row in after_filter_results:
-#             data_list.append({
-#                 'Ship': row.Ship,
-#                 'vlims_lo_samp_point_Desc': 'AFTER FILTER',
-#                 'Average_Particle_Count_4_Micron': round(row.avg_4_micron, 2) if row.avg_4_micron else 0.0,
-#                 'Average_Particle_Count_6_Micron': round(row.avg_6_micron, 2) if row.avg_6_micron else 0.0,
-#                 'Average_Particle_Count_14_Micron': round(row.avg_14_micron, 2) if row.avg_14_micron else 0.0
-#             })
+#         # Average HCU particle count
+#         avg_hcu_query = db.session.query(
+#             Data.vlims_lo_samp_point_Desc,
+#             func.avg(Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE).label("avg_4"),
+#             func.avg(Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE).label("avg_6"),
+#             func.avg(Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE).label("avg_14")
+#         ).filter(
+#             *base_filters,
+#             Data.vlims_lo_samp_point_Desc.in_([f"HCU#{i}" for i in range(1, 10)])
+#         ).group_by(Data.vlims_lo_samp_point_Desc).all()
 
-#         return jsonify(data_list), 200
+#         avg_hcu_counts = [
+#             {
+#                 "Sample_Point": row.vlims_lo_samp_point_Desc,
+#                 "Average_Particle_Count_4_Micron": round(row.avg_4 or 0.0, 2),
+#                 "Average_Particle_Count_6_Micron": round(row.avg_6 or 0.0, 2),
+#                 "Average_Particle_Count_14_Micron": round(row.avg_14 or 0.0, 2)
+#             } for row in avg_hcu_query
+#         ]
+
+#         # Filter averages (BEFORE & AFTER FILTER)
+#         filter_avgs = db.session.query(
+#             Data.vlims_lo_samp_point_Desc,
+#             func.avg(Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE).label("avg_4"),
+#             func.avg(Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE).label("avg_6"),
+#             func.avg(Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE).label("avg_14")
+#         ).filter(
+#             *base_filters,
+#             Data.vlims_lo_samp_point_Desc.in_(["BEFORE FILTER", "AFTER FILTER"])
+#         ).group_by(Data.vlims_lo_samp_point_Desc).all()
+
+#         filter_avg_counts = [
+#             {
+#                 "Sample_Point": row.vlims_lo_samp_point_Desc,
+#                 "Average_Particle_Count_4_Micron": round(row.avg_4 or 0.0, 2),
+#                 "Average_Particle_Count_6_Micron": round(row.avg_6 or 0.0, 2),
+#                 "Average_Particle_Count_14_Micron": round(row.avg_14 or 0.0, 2)
+#             } for row in filter_avgs
+#         ]
+
+#         return jsonify({
+#             "ship": ship,
+#             "start_date": start_date_str,
+#             "end_date": end_date_str,
+#             "sample_type_count": sample_type_count,
+#             "hcu_count": hcu_count,
+#             "purifier_count": purifier_count,
+#             "hcu_details": hcu_detail_list,
+#             "average_hcu_counts": avg_hcu_counts,
+#             "filter_average_counts": filter_avg_counts
+#         }), 200
 
 #     except Exception as e:
 #         db.session.rollback()
-#         return jsonify({'error': str(e)}), 500
+#         return jsonify({"error": str(e)}), 500
 
-# @app.route('/api/filtered-average-particle-count', methods=['GET'])
-# def avg_particle_count():
-#     try:
-#         start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d').date()
-#         end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d').date()
 
-#         data_list = []
-#         for label in ['BEFORE FILTER', 'AFTER FILTER']:
-#             results = db.session.query(
-#                 Data.Ship,
-#                 func.avg(Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE).label('avg_4'),
-#                 func.avg(Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE).label('avg_6'),
-#                 func.avg(Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE).label('avg_14')
-#             ).filter(
-#                 Data.testdate >= start_date,
-#                 Data.testdate <= end_date,
-#                 Data.vlims_lo_samp_point_Desc == label
-#             ).group_by(Data.Ship).all()
+@app.route("/api/ship-summary", methods=["GET"])
+def ship_summary():
+    try:
+        # Get parameters
+        ships_param = request.args.get("ship")
+        start_date_str = request.args.get("start_date")
+        end_date_str = request.args.get("end_date")
 
-#             for row in results:
-#                 data_list.append({
-#                     'Ship': row.Ship,
-#                     'vlims_lo_samp_point_Desc': label,
-#                     'Average_Particle_Count_4_Micron': round(row.avg_4, 2) if row.avg_4 else 0.0,
-#                     'Average_Particle_Count_6_Micron': round(row.avg_6, 2) if row.avg_6 else 0.0,
-#                     'Average_Particle_Count_14_Micron': round(row.avg_14, 2) if row.avg_14 else 0.0
-#                 })
+        if not ships_param or not start_date_str or not end_date_str:
+            return jsonify({"error": "Missing required parameters"}), 400
 
-#         return jsonify(data_list), 200
+        # Split ships by comma and strip whitespace
+        ship_list = [s.strip() for s in ships_param.split(",") if s.strip()]
 
-#     except Exception as e:
-#         db.session.rollback()
-#         return jsonify({'error': str(e)}), 500
+        # Parse dates
+        try:
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+
+        # Common filter
+        base_filters = [
+            Data.Ship.in_(ship_list),
+            Data.testdate >= start_date,
+            Data.testdate <= end_date
+        ]
+
+        # Sample type count
+        sample_type_query = db.session.query(
+            Data.Ship,
+            Data.Samp_Type,
+            func.count().label("count")
+        ).filter(*base_filters).group_by(Data.Ship, Data.Samp_Type).all()
+
+        sample_type_count = {}
+        for ship, samp_type, count in sample_type_query:
+            sample_type_count.setdefault(ship, {})[samp_type] = count
+
+        # HCU count
+        hcu_count_query = db.session.query(
+            Data.Ship,
+            func.count()
+        ).filter(*base_filters, Data.Samp_Type == "HCU").group_by(Data.Ship).all()
+        hcu_count = {ship: count for ship, count in hcu_count_query}
+
+        # Purifier count
+        purifier_count_query = db.session.query(
+            Data.Ship,
+            func.count()
+        ).filter(*base_filters, Data.Samp_Type == "Purifier").group_by(Data.Ship).all()
+        purifier_count = {ship: count for ship, count in purifier_count_query}
+
+        # HCU details
+        hcu_details_query = db.session.query(
+            Data.Ship,
+            Data.testdate,
+            Data.vlims_lo_samp_point_Desc,
+            Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE,
+            Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE,
+            Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE
+        ).filter(
+            *base_filters,
+            Data.vlims_lo_samp_point_Desc.like("HCU%")
+        ).order_by(Data.testdate).all()
+
+        hcu_detail_list = [{
+            "Ship": row.Ship,
+            "Test_Date": row.testdate.strftime("%Y-%m-%d"),
+            "Sample_Point": row.vlims_lo_samp_point_Desc,
+            "Particle_Count_4_Micron": row.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE or 0.0,
+            "Particle_Count_6_Micron": row.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE or 0.0,
+            "Particle_Count_14_Micron": row.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE or 0.0
+        } for row in hcu_details_query]
+
+        # Average HCU particle count
+        avg_hcu_query = db.session.query(
+            Data.Ship,
+            Data.vlims_lo_samp_point_Desc,
+            func.avg(Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE).label("avg_4"),
+            func.avg(Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE).label("avg_6"),
+            func.avg(Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE).label("avg_14")
+        ).filter(
+            *base_filters,
+            Data.vlims_lo_samp_point_Desc.in_([f"HCU#{i}" for i in range(1, 10)])
+        ).group_by(Data.Ship, Data.vlims_lo_samp_point_Desc).all()
+
+        avg_hcu_counts = [{
+            "Ship": row.Ship,
+            "Sample_Point": row.vlims_lo_samp_point_Desc,
+            "Average_Particle_Count_4_Micron": round(row.avg_4 or 0.0, 2),
+            "Average_Particle_Count_6_Micron": round(row.avg_6 or 0.0, 2),
+            "Average_Particle_Count_14_Micron": round(row.avg_14 or 0.0, 2)
+        } for row in avg_hcu_query]
+
+        # Filter averages (BEFORE & AFTER)
+        filter_avg_query = db.session.query(
+            Data.Ship,
+            Data.vlims_lo_samp_point_Desc,
+            func.avg(Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE).label("avg_4"),
+            func.avg(Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE).label("avg_6"),
+            func.avg(Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE).label("avg_14")
+        ).filter(
+            *base_filters,
+            Data.vlims_lo_samp_point_Desc.in_(["BEFORE FILTER", "AFTER FILTER"])
+        ).group_by(Data.Ship, Data.vlims_lo_samp_point_Desc).all()
+
+        filter_average_counts = [{
+            "Ship": row.Ship,
+            "Sample_Point": row.vlims_lo_samp_point_Desc,
+            "Average_Particle_Count_4_Micron": round(row.avg_4 or 0.0, 2),
+            "Average_Particle_Count_6_Micron": round(row.avg_6 or 0.0, 2),
+            "Average_Particle_Count_14_Micron": round(row.avg_14 or 0.0, 2)
+        } for row in filter_avg_query]
+
+        # Final Response
+        return jsonify({
+            "ships": ship_list,
+            "start_date": start_date_str,
+            "end_date": end_date_str,
+            "sample_type_count": sample_type_count,
+            "hcu_count": hcu_count,
+            "purifier_count": purifier_count,
+            "hcu_details": hcu_detail_list,
+            "average_hcu_counts": avg_hcu_counts,
+            "filter_average_counts": filter_average_counts
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        print("❌ Exception occurred:", e)
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+
+
 
 if __name__ == "__main__":
     app.run(debug=True)
