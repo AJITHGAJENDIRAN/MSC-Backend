@@ -488,6 +488,35 @@ def ship_summary():
             "Particle_Count_14_Micron": row.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE or 0.0
         } for row in hcu_details_query]
 
+
+        # Filter sample point details (BEFORE & AFTER FILTER) over time
+          # Filter sample point details (BEFORE & AFTER FILTER) over time
+        try:
+            filter_details_query = db.session.query(
+                Data.Ship,
+                Data.testdate,
+                Data.vlims_lo_samp_point_Desc,
+                Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE,
+                Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE,
+                Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE
+            ).filter(
+                *base_filters,
+                Data.vlims_lo_samp_point_Desc.in_(["BEFORE FILTER", "AFTER FILTER"])
+            ).order_by(Data.testdate).all()
+
+            filter_sample_details = [{
+                "Ship": row.Ship,
+                "Test_Date": row.testdate.strftime("%Y-%m-%d"),
+                "Sample_Point": row.vlims_lo_samp_point_Desc,
+                "Particle_Count_4_Micron": row.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE or 0.0,
+                "Particle_Count_6_Micron": row.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE or 0.0,
+                "Particle_Count_14_Micron": row.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE or 0.0
+            } for row in filter_details_query]
+
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 500
+
         # Average HCU particle count
         avg_hcu_query = db.session.query(
             Data.Ship,
@@ -538,7 +567,8 @@ def ship_summary():
             "purifier_count": purifier_count,
             "hcu_details": hcu_detail_list,
             "average_hcu_counts": avg_hcu_counts,
-            "filter_average_counts": filter_average_counts
+            "filter_average_counts": filter_average_counts,
+            "filter_sample_details": filter_sample_details
         }), 200
 
     except Exception as e:
