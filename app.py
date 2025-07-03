@@ -491,7 +491,44 @@ def ship_summary():
 
         # Filter sample point details (BEFORE & AFTER FILTER) over time
           # Filter sample point details (BEFORE & AFTER FILTER) over time
+        # try:
+        #     filter_details_query = db.session.query(
+        #         Data.Ship,
+        #         Data.testdate,
+        #         Data.vlims_lo_samp_point_Desc,
+        #         Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE,
+        #         Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE,
+        #         Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE
+        #     ).filter(
+        #         *base_filters,
+        #         Data.vlims_lo_samp_point_Desc.in_(["BEFORE FILTER", "AFTER FILTER"])
+        #     ).order_by(Data.testdate).all()
+
+        #     filter_sample_details = [{
+        #         "Ship": row.Ship,
+        #         "Test_Date": row.testdate.strftime("%Y-%m-%d"),
+        #         "Sample_Point": row.vlims_lo_samp_point_Desc,
+        #         "Particle_Count_4_Micron": row.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE or 0.0,
+        #         "Particle_Count_6_Micron": row.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE or 0.0,
+        #         "Particle_Count_14_Micron": row.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE or 0.0
+        #     } for row in filter_details_query]
+
+        # except Exception as e:
+        #     db.session.rollback()
+        #     return jsonify({'error': str(e)}), 500
+
+
         try:
+            filter_conditions = [
+                Data.testdate >= start_date,
+                Data.testdate <= end_date,
+                Data.vlims_lo_samp_point_Desc.in_(["BEFORE FILTER", "AFTER FILTER"])
+            ]
+
+            # Apply ship filter only if specific ships are selected
+            if ship_list:
+                filter_conditions.insert(0, Data.Ship.in_(ship_list))
+
             filter_details_query = db.session.query(
                 Data.Ship,
                 Data.testdate,
@@ -499,10 +536,7 @@ def ship_summary():
                 Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE,
                 Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE,
                 Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE
-            ).filter(
-                *base_filters,
-                Data.vlims_lo_samp_point_Desc.in_(["BEFORE FILTER", "AFTER FILTER"])
-            ).order_by(Data.testdate).all()
+            ).filter(*filter_conditions).order_by(Data.testdate).all()
 
             filter_sample_details = [{
                 "Ship": row.Ship,
@@ -516,7 +550,6 @@ def ship_summary():
         except Exception as e:
             db.session.rollback()
             return jsonify({'error': str(e)}), 500
-
         # Average HCU particle count
         avg_hcu_query = db.session.query(
             Data.Ship,
