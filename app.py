@@ -413,6 +413,7 @@ def filtered_average_particle_count():
 #         return jsonify({"error": str(e)}), 500
 
 
+
 @app.route("/api/ship-summary", methods=["GET"])
 def ship_summary():
     try:
@@ -612,6 +613,52 @@ def ship_summary():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/api/filter-sample-details', methods=['GET'])
+def get_filter_sample_details():
+    try:
+        start_date_str = request.args.get("start_date")
+        end_date_str = request.args.get("end_date")
+
+        if not start_date_str or not end_date_str:
+            return jsonify({"error": "Missing required date parameters"}), 400
+
+        # Convert to date
+        try:
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+
+        # Filter only by date and sample point type
+        filter_conditions = [
+            Data.testdate >= start_date,
+            Data.testdate <= end_date,
+            Data.vlims_lo_samp_point_Desc.in_(["BEFORE FILTER", "AFTER FILTER"])
+        ]
+
+        filter_details_query = db.session.query(
+            Data.Ship,
+            Data.testdate,
+            Data.vlims_lo_samp_point_Desc,
+            Data.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE,
+            Data.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE,
+            Data.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE
+        ).filter(*filter_conditions).order_by(Data.testdate).all()
+
+        filter_sample_details = [{
+            "Ship": row.Ship,
+            "Test_Date": row.testdate.strftime("%Y-%m-%d"),
+            "Sample_Point": row.vlims_lo_samp_point_Desc,
+            "Particle_Count_4_Micron": row.VLIMS_PARTICLE_COUNT_4_MICRON_SCALE or 0.0,
+            "Particle_Count_6_Micron": row.VLIMS_PARTICLE_COUNT_6_MICRON_SCALE or 0.0,
+            "Particle_Count_14_Micron": row.VLIMS_PARTICLE_COUNT_14_MICRON_SCALE or 0.0
+        } for row in filter_details_query]
+
+        return jsonify(filter_sample_details), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 
 
