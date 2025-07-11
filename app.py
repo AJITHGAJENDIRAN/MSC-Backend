@@ -8,6 +8,7 @@ import urllib
 from flask import send_from_directory
 from flask_cors import CORS
 import os
+from collections import defaultdict
 
 
 
@@ -424,10 +425,12 @@ def ship_summary():
 
         if not ships_param or not start_date_str or not end_date_str:
             return jsonify({"error": "Missing required parameters"}), 400
+        # if not start_date_str or not end_date_str:
+        # return jsonify({"error": "start_date and end_date are required"}), 400
 
         # Split ships by comma and strip whitespace
         ship_list = [s.strip() for s in ships_param.split(",") if s.strip()]
-
+    
         # Parse dates
         try:
             start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
@@ -591,6 +594,55 @@ def ship_summary():
             "Average_Particle_Count_14_Micron": round(row.avg_14 or 0.0, 2)
         } for row in filter_avg_query]
 
+        # # Step 1: Determine relevant ships
+        # if ships_param:
+        #     ship_list = [s.strip() for s in ships_param.split(",") if s.strip()]
+        # else:
+        #     ship_list = [
+        #         row[0] for row in db.session.query(Data.Ship)
+        #         .filter(Data.testdate >= start_date, Data.testdate <= end_date)
+        #         .distinct().all()
+        #     ]
+
+        # relevant_ships = ship_list
+
+        # # Step 2: Get LO serial numbers for those ships in date range
+        # lo_serials_with_samples_query = db.session.query(
+        #     Data.Ship,
+        #     Data.LO_Serial
+        # ).filter(
+        #     Data.testdate >= start_date,
+        #     Data.testdate <= end_date,
+        #     Data.Ship.in_(relevant_ships),
+        #     Data.LO_Serial.isnot(None)
+        # ).distinct().all()
+
+        # # Step 3: Group LO serials by ship
+        # ship_lo_map = defaultdict(set)
+        # for ship, lo_serial in lo_serials_with_samples_query:
+        #     if lo_serial:
+        #         ship_lo_map[ship].add(lo_serial)
+
+        # # Step 4: Determine ships with and without samples
+        # ships_sent_samples = list(ship_lo_map.keys())
+        # ships_not_sent_samples = list(set(relevant_ships) - set(ships_sent_samples))
+
+        # # Step 5: Structure the result
+        # ship_sample_status = {
+        #     "total_selected_ships": len(relevant_ships),
+        #     "ships_sent_samples": {
+        #         "count": len(ships_sent_samples),
+        #         "ships": ships_sent_samples,
+        #         "lo_serial_counts": {ship: len(lo_set) for ship, lo_set in ship_lo_map.items()}
+        #     },
+        #     "ships_not_sent_samples": {
+        #         "count": len(ships_not_sent_samples),
+        #         "ships": ships_not_sent_samples
+        #     }
+        # }
+
+
+
         # Final Response
         return jsonify({
             "ships": ship_list,
@@ -603,6 +655,7 @@ def ship_summary():
             "average_hcu_counts": avg_hcu_counts,
             "filter_average_counts": filter_average_counts,
             "filter_sample_details": filter_sample_details
+            # "ship_sample_status": ship_sample_status
         }), 200
 
     except Exception as e:
@@ -612,7 +665,88 @@ def ship_summary():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/ship-sample-status", methods=["GET"])
+def ship_sample_status_route():
+    try:
+        ships_param = request.args.get("ship", "")
+        start_date_str = request.args.get("start_date")
+        end_date_str = request.args.get("end_date")
 
+        # ✅ Required validation
+        if not start_date_str or not end_date_str:
+            return jsonify({"error": "Missing start_date or end_date"}), 400
+
+        try:
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+
+        # ✅ Get all known ships from the database
+        all_known_ships = [row[0] for row in db.session.query(Data.Ship).distinct().all()]
+
+        # ✅ Determine relevant ships (filtered or all)
+        if ships_param:
+            selected_ships = [s.strip() for s in ships_param.split(",") if s.strip()]
+        else:
+            selected_ships = all_known_ships
+
+        relevant_ships = selected_ships
+
+        # ✅ Step 2: Query LO serials in the selected date range for selected ships
+        lo_serials_with_samples_query = db.session.query(
+            Data.Ship,
+            Data.LO_Serial
+        ).filter(
+            Data.testdate >= start_date,
+            Data.testdate <= end_date,
+            Data.Ship.in_(relevant_ships),
+            Data.LO_Serial.isnot(None)
+        ).distinct().all()
+
+        # ✅ Step 3: Group LO serials by ship
+        ship_lo_map = defaultdict(set)
+        for ship, lo_serial in lo_serials_with_samples_query:
+            if lo_serial:
+                ship_lo_map[ship].add(lo_serial)
+
+        # ✅ Step 4: Determine which ships sent/did not send
+        ships_sent_samples = list(ship_lo_map.keys())
+        ships_not_sent_samples = list(set(relevant_ships) - set(ships_sent_samples))
+
+        # ✅ Step 5: Prepare the final response
+        ship_sample_status = {
+            "total_selected_ships": len(relevant_ships),
+            "ships_sent_samples": {
+                "count": len(ships_sent_samples),
+                "ships": [
+                    {
+                        "ship": ship,
+                        "lo_serial_count": len(ship_lo_map[ship])
+                    }
+                    for ship in ships_sent_samples
+                ]
+            },
+            "ships_not_sent_samples": {
+                "count": len(ships_not_sent_samples),
+                "ships": [
+                    {
+                        "ship": ship,
+                        "lo_serial_count": 0
+                    }
+                    for ship in ships_not_sent_samples
+                ]
+            }
+        }
+
+        return jsonify({"ship_sample_status": ship_sample_status}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+        
 @app.route('/api/filter-sample-details', methods=['GET'])
 def get_filter_sample_details():
     try:

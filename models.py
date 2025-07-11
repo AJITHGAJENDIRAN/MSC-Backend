@@ -191,6 +191,9 @@ class Data(db.Model):
     VLIMS_PARTICLE_COUNT_6_MICRON_SCALE = db.Column(db.Float, nullable=True)
     VLIMS_PARTICLE_COUNT_14_MICRON_SCALE = db.Column(db.Float, nullable=True)
 
+    # ✅ Add this field for ship summary endpoint
+    LO_Serial = db.Column(db.String(100), nullable=True)
+
     def __repr__(self):
         return f"<Data {self.Ship} - {self.testdate}>"
 
